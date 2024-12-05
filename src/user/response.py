@@ -1,12 +1,17 @@
 from pydantic import BaseModel
 
 
-# 내 정보를 반환할 때
+# 내 정보 조회
 class UserMeResponse(BaseModel):
+    id: int
     username: str
     password: str
 
 
-# 다른 사람의 정보를 반환할 때
+# 다른 사람의 정보 조회
 class UserResponse(BaseModel):
     username: str
+
+
+class JWTResponse(BaseModel):
+    access_token: str

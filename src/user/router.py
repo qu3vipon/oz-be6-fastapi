@@ -1,21 +1,14 @@
 from fastapi import APIRouter, Path, Body, status, HTTPException, Depends
 from fastapi.security import HTTPBasicCredentials, HTTPBasic
+from sqlalchemy.orm import Session
 
+from config.database import get_session
+from user.authentication import check_password, encode_access_token, authenticate
+from user.models import User
 from user.request import SignUpRequestBody
-from user.response import UserMeResponse, UserResponse
+from user.response import UserMeResponse, UserResponse, JWTResponse
 
 router = APIRouter(prefix="/users", tags=["User"])
-
-db = [
-    {
-        "username": "alice",
-        "password": "alicezzang123",
-    },
-    {
-        "username": "bob",
-        "password": "bobzzang123",
-    },
-]
 
 
 @router.post(
@@ -23,34 +16,60 @@ db = [
     response_model=UserMeResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def sign_up_handler(body: SignUpRequestBody):
-    new_user = {
-        "username": body.username,
-        "password": body.password,
-    }
-    db.append(new_user)
+def sign_up_handler(
+    body: SignUpRequestBody,
+    session: Session = Depends(get_session),
+):
+    new_user = User.create(username=body.username, password=body.password)
+    session.add(new_user)
+    session.commit()  # db 저장
+
     return UserMeResponse(
-        username=new_user["username"],
-        password=new_user["password"],
+        id=new_user.id, username=new_user.username, password=new_user.password
     )
+
+@router.post(
+    "/login",
+    response_model=JWTResponse,
+    status_code=status.HTTP_200_OK,
+)
+def login_handler(
+    credentials: HTTPBasicCredentials = Depends(HTTPBasic()),
+    session: Session = Depends(get_session),
+):
+    user: User | None = session.query(User).filter(
+        User.username == credentials.username
+    ).first()
+
+    if user:
+        if check_password(
+            plain_text=credentials.password, hashed_password=user.password
+        ):
+            return JWTResponse(
+                access_token=encode_access_token(username=user.username),
+            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password",
+        )
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="User not found",
+    )
+
 
 # 내 정보 조회
 @router.get("/me")
 def get_me_handler(
-    credentials: HTTPBasicCredentials = Depends(HTTPBasic())
+    username: str = Depends(authenticate),
+    session: Session = Depends(get_session),
 ):
-    for user in db:
-        if user["username"] == credentials.username:
-            if user["password"] == credentials.password:
-                return UserMeResponse(
-                    username=user["username"], password=user["password"]
-                )
-            else:
-                # 비밀번호 틀린 경우
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Incorrect password",
-                )
+    user: User | None = session.query(User).filter(User.username == username).first()
+
+    if user:
+        return UserMeResponse(
+            id=user.id, username=user.username, password=user.password
+        )
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -64,27 +83,47 @@ def get_me_handler(
     status_code=status.HTTP_200_OK,
 )
 def update_user_handler(
-    credentials: HTTPBasicCredentials = Depends(HTTPBasic()),
+    username: str = Depends(authenticate),
     new_password: str = Body(..., embed=True),
+    session: Session = Depends(get_session),
 ):
-    for user in db:
-        if user["username"] == credentials.username:
-            if user["password"] != credentials.password:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Incorrect password",
-                )
+    user: User | None = session.query(User).filter(User.username == username).first()
 
-            user["password"] = new_password
-            return UserMeResponse(
-                username=user["username"],
-                password=user["password"],
-            )
+    if user:
+        user.update_password(password=new_password)
+        session.add(user)
+        session.commit()
+
+        return UserMeResponse(
+            id=user.id, username=user.username, password=user.password
+        )
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="User not found",
     )
+
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def delete_user_handler(
+    username: str = Depends(authenticate),
+    session: Session = Depends(get_session),
+):
+    user: User | None = session.query(User).filter(User.username == username).first()
+
+    if user:
+        session.delete(user)
+        session.commit()
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="User not found",
+    )
+
 
 # 다른 사람 정보를 조회하는 경우
 @router.get(
@@ -93,32 +132,13 @@ def update_user_handler(
     status_code=status.HTTP_200_OK,
 )
 def get_user_handler(
+    _: str = Depends(authenticate),
     username: str = Path(..., max_length=10),
+    session: Session = Depends(get_session),
 ):
-    for user in db:
-        if user["username"] == username:
-            return UserResponse(username=user["username"])
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="User not found",
-    )
-
-
-
-
-@router.delete(
-    "/{username}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
-)
-def delete_user_handler(
-    username: str = Path(..., max_length=10)
-):
-    for user in db:
-        if user["username"] == username:
-            db.remove(user)
-            return
+    user: User | None = session.query(User).filter(User.username == username).first()
+    if user:
+        return UserResponse(username=user.username)
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
