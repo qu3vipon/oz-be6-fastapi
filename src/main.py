@@ -4,7 +4,6 @@ import time
 import requests
 import httpx
 
-from datetime import datetime
 
 from fastapi import FastAPI, status
 from fastapi.exceptions import RequestValidationError

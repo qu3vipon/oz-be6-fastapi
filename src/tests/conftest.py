@@ -6,7 +6,8 @@ from sqlalchemy_utils import database_exists, create_database
 from fastapi.testclient import TestClient
 
 from main import app
-from config.database import Base, get_session
+from config.database.connection import get_session
+from config.database.orm import Base
 from user.authentication import encode_access_token
 from user.models import User
 
