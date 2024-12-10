@@ -1,18 +1,21 @@
 import asyncio
+
+import httpx
 from fastapi import APIRouter, Path, Body, status, HTTPException, Depends, BackgroundTasks
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBasicCredentials, HTTPBasic
-from pydantic import constr
 from sqlalchemy.orm import Session
 
+from config import settings
 from config.cache import redis_client
 from config.database.connection import get_session
-from user.authentication import check_password, encode_access_token, authenticate
-from user.email_service import send_otp
-from user.models import User
-from user.otp_service import create_otp
+from user.service.authentication import check_password, encode_access_token, authenticate
+from user.service.email_service import send_otp
+from user.models import User, SocialProvider
+from user.service.otp_service import create_otp
 from user.repository import UserRepository
-from user.request import SignUpRequestBody
-from user.response import UserMeResponse, UserResponse, JWTResponse
+from user.schema.request import SignUpRequestBody
+from user.schema.response import UserMeResponse, UserResponse, JWTResponse
 
 router = APIRouter(prefix="/users", tags=["SyncUser"])
 
@@ -60,6 +63,93 @@ def login_handler(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="User not found",
     )
+
+# 1) 카카오 로그인 하기 API
+# - 사용자가 카카오 로그인 하려고 할 때
+# - 사용자를 카카오 redirect -> 카카오에서 동의화면 보여줌
+@router.get(
+    "/social/kakao/login",
+    status_code=status.HTTP_200_OK,
+)
+def kakao_social_login_handler():
+    return RedirectResponse(
+        "https://kauth.kakao.com/oauth/authorize"
+        f"?client_id={settings.kakao_rest_api_key}"
+        f"&redirect_uri={settings.kakao_redirect_url}"
+        f"&response_type=code",
+    )
+
+
+# 2) 카카오 Callback API
+# : 사용자가 인증 동의를 해서 카카오에서 사용자의 auth_code를 넘겨줄 때
+@router.get(
+    "/social/kakao/callback",
+    status_code=status.HTTP_200_OK,
+)
+def kakao_social_callback_handler(
+    code: str,
+    user_repo: UserRepository = Depends(),
+):
+    # 1) auth_code -> access_token 발급받기
+    response = httpx.post(
+        "https://kauth.kakao.com/oauth/token",
+        data={
+            "grant_type": "authorization_code",
+            "client_id": settings.kakao_rest_api_key,
+            "redirect_uri": settings.kakao_redirect_url,
+            "code": code,
+        },
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        }
+    )
+
+    response.raise_for_status()
+    if response.is_success:
+        # 2) access_token -> 사용자 정보 조회
+        access_token: str = response.json().get("access_token")
+        profile_response = httpx.get(
+            "https://kapi.kakao.com/v2/user/me",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        profile_response.raise_for_status()
+        if profile_response.is_success:
+            # 3) 사용자 정보 -> 회원가입/로그인
+            user_profile: dict = profile_response.json()
+
+            user_subject: str = str(user_profile["id"])
+            email: str = user_profile["kakao_account"]["email"]
+
+            user: User | None = user_repo.get_user_by_social_email(
+                social_provider=SocialProvider.KAKAO, email=email
+            )
+
+            # 이미 가입된 사용자 -> 로그인
+            if user:
+                return JWTResponse(
+                    access_token=encode_access_token(username=user.username)
+                )
+
+            # 처음 소셜 로그인하는 경우
+            user = User.social_signup(
+                social_provider=SocialProvider.KAKAO,
+                subject=user_subject,
+                email=email,
+            )
+            user_repo.save(user=user)
+
+            # 4) JWT 반환
+            return JWTResponse(
+                access_token=encode_access_token(username=user.username)
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Kakao social callback failed",
+    )
+
+
 
 # OTP 발급 API
 # : POST /users/email/otp

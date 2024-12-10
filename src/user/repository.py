@@ -3,7 +3,7 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from config.database.connection import get_session
-from user.models import User
+from user.models import User, SocialProvider
 
 
 class UserRepository:
@@ -16,6 +16,14 @@ class UserRepository:
 
     def get_user_by_username(self, username: str) -> User | None:
         return self.session.query(User).filter(User.username == username).first()
+
+    def get_user_by_social_email(
+        self, social_provider: SocialProvider, email: str
+    ) -> User | None:
+        return self.session.query(User).filter(
+            User.social_provider == social_provider,
+            User.email == email
+        ).first()
 
     def delete(self, user: User) -> None:
         self.session.delete(user)

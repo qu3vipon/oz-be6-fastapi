@@ -8,15 +8,17 @@ import httpx
 from fastapi import FastAPI, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.datastructures import State
+from starlette.staticfiles import StaticFiles
 
-from item import router as item_router
-from user import router as user_router
-from user import router_async as user_async_router
+from feed import router as feed_router
+from user.api import router as user_router
 
 app = FastAPI()
-app.include_router(item_router.router)
-app.include_router(user_router.router, prefix="/sync")
-app.include_router(user_async_router.router, prefix="/async")
+app.mount("/static", StaticFiles(directory="feed/posts"))
+app.include_router(user_router.router)
+app.include_router(feed_router.router)
+
 
 
 @app.exception_handler(RequestValidationError)
@@ -32,6 +34,14 @@ def value_error_handler(request, exc):
         content={"error": str(exc)},
         status_code=status.HTTP_400_BAD_REQUEST,
     )
+
+@app.exception_handler(httpx.HTTPStatusError)
+def httpx_status_error_handler(request, exc):
+    return JSONResponse(
+        content={"error": str(exc)},
+        status_code=status.HTTP_400_BAD_REQUEST,
+    )
+
 
 @app.get("/")
 def health_check_handler():

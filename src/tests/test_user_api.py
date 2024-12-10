@@ -1,7 +1,6 @@
 import base64
 
 from tests.conftest import test_session
-from user.authentication import encode_access_token
 from user.models import User
 
 

@@ -5,10 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.database.connection_async import get_async_session
-from user.authentication import check_password, encode_access_token, authenticate
+from user.service.authentication import check_password, encode_access_token, authenticate
 from user.models import User
-from user.request import SignUpRequestBody
-from user.response import UserMeResponse, UserResponse, JWTResponse
+from user.schema.request import SignUpRequestBody
+from user.schema.response import UserMeResponse, UserResponse, JWTResponse
 
 router = APIRouter(prefix="/users", tags=["AsyncUser"])
 
