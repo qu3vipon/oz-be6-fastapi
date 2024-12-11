@@ -28,16 +28,15 @@ ALGORITHM = "HS256"
 
 
 class JWTPayload(TypedDict):
-    username: str
+    user_id: int
     isa: int
 
-def encode_access_token(username: str) -> str:
+def encode_access_token(user_id: int) -> str:
     payload: JWTPayload = {
-        "username": username, "isa": int(time.time())
+        "user_id": user_id,
+        "isa": int(time.time()),
     }
-    access_token: str = jwt.encode(
-        payload, SECRET_KEY, algorithm=ALGORITHM
-    )
+    access_token: str = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return access_token
 
 def decode_access_token(access_token: str) -> JWTPayload:
@@ -47,15 +46,15 @@ def decode_access_token(access_token: str) -> JWTPayload:
 
 def authenticate(
     auth_header: HTTPAuthorizationCredentials = Depends(HTTPBearer())
-) -> str:
+) -> int:
     # 인증 성공
     payload: JWTPayload = decode_access_token(access_token=auth_header.credentials)
 
     # token 만료 검사
-    EXPIRY_SECONDS = 60 * 60 * 24 * 7
-    if payload["isa"] + EXPIRY_SECONDS < time.time():
+    expiry_seconds = 60 * 60 * 24 * 7
+    if payload["isa"] + expiry_seconds < time.time():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired",
         )
-    return payload["username"]
+    return payload["user_id"]

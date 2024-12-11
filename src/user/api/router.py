@@ -4,11 +4,9 @@ import httpx
 from fastapi import APIRouter, Path, Body, status, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBasicCredentials, HTTPBasic
-from sqlalchemy.orm import Session
 
 from config import settings
 from config.cache import redis_client
-from config.database.connection import get_session
 from user.service.authentication import check_password, encode_access_token, authenticate
 from user.service.email_service import send_otp
 from user.models import User, SocialProvider
@@ -17,7 +15,7 @@ from user.repository import UserRepository
 from user.schema.request import SignUpRequestBody
 from user.schema.response import UserMeResponse, UserResponse, JWTResponse
 
-router = APIRouter(prefix="/users", tags=["SyncUser"])
+router = APIRouter(prefix="/users", tags=["User"])
 
 async def send_welcome_email(username):
     await asyncio.sleep(5)
@@ -53,7 +51,7 @@ def login_handler(
             plain_text=credentials.password, hashed_password=user.password
         ):
             return JWTResponse(
-                access_token=encode_access_token(username=user.username),
+                access_token=encode_access_token(user_id=user.id),
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -128,7 +126,7 @@ def kakao_social_callback_handler(
             # 이미 가입된 사용자 -> 로그인
             if user:
                 return JWTResponse(
-                    access_token=encode_access_token(username=user.username)
+                    access_token=encode_access_token(user_id=user.id)
                 )
 
             # 처음 소셜 로그인하는 경우
@@ -141,7 +139,7 @@ def kakao_social_callback_handler(
 
             # 4) JWT 반환
             return JWTResponse(
-                access_token=encode_access_token(username=user.username)
+                access_token=encode_access_token(user_id=user.id)
             )
 
     raise HTTPException(
@@ -159,7 +157,7 @@ def kakao_social_callback_handler(
 )
 def create_email_otp_handler(
     background_tasks: BackgroundTasks,
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     email: str = Body(
         ...,
         pattern=r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$",
@@ -169,7 +167,7 @@ def create_email_otp_handler(
     user_repo: UserRepository = Depends(),
 ):
     # 1) 이미 회원가입한 사용자가 이메일 인증을 위해 이메일 주소 입력
-    if not (user := user_repo.get_user_by_username(username=username)):
+    if not (user := user_repo.get_user_by_id(user_id=user_id)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
@@ -190,12 +188,12 @@ def create_email_otp_handler(
 # : POST /users/email/otp/verify
 @router.post("/email/otp/verify")
 def verify_email_otp_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     otp: int = Body(..., embed=True, ge=100_000, le=999_999),
     user_repo: UserRepository = Depends(),
 ):
     # 1) 사용자가 이메일로 받은 OTP를 서버에 전달
-    if not (user := user_repo.get_user_by_username(username=username)):
+    if not (user := user_repo.get_user_by_id(user_id=user_id)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
@@ -224,10 +222,10 @@ def verify_email_otp_handler(
 # 내 정보 조회
 @router.get("/me")
 def get_me_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     user_repo: UserRepository = Depends(),
 ):
-    if user := user_repo.get_user_by_username(username=username):
+    if user := user_repo.get_user_by_id(user_id=user_id):
         return UserMeResponse.model_validate(obj=user)
 
     raise HTTPException(
@@ -242,11 +240,11 @@ def get_me_handler(
     status_code=status.HTTP_200_OK,
 )
 def update_user_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     new_password: str = Body(..., embed=True),
     user_repo: UserRepository = Depends(),
 ):
-    if user := user_repo.get_user_by_username(username=username):
+    if user := user_repo.get_user_by_id(user_id=user_id):
         user.update_password(password=new_password)
         user_repo.save(user=user)
         return UserMeResponse.model_validate(obj=user)
@@ -262,10 +260,10 @@ def update_user_handler(
     response_model=None,
 )
 def delete_user_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     user_repo: UserRepository = Depends(),
 ):
-    if user := user_repo.get_user_by_username(username=username):
+    if user := user_repo.get_user_by_id(user_id=user_id):
         user_repo.delete(user=user)
         return
 
@@ -284,9 +282,9 @@ def delete_user_handler(
 def get_user_handler(
     _: str = Depends(authenticate),
     username: str = Path(..., max_length=10),
-    session: Session = Depends(get_session),
+    user_repo: UserRepository = Depends(),
 ):
-    user: User | None = session.query(User).filter(User.username == username).first()
+    user: User | None = user_repo.get_user_by_username(username=username)
     if user:
         return UserResponse(username=user.username)
 

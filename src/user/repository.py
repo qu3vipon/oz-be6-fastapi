@@ -14,8 +14,11 @@ class UserRepository:
         self.session.add(user)
         self.session.commit()
 
+    def get_user_by_id(self, user_id: int) -> User | None:
+        return self.session.query(User).filter_by(id=user_id).first()
+
     def get_user_by_username(self, username: str) -> User | None:
-        return self.session.query(User).filter(User.username == username).first()
+        return self.session.query(User).filter_by(username=username).first()
 
     def get_user_by_social_email(
         self, social_provider: SocialProvider, email: str

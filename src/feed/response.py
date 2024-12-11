@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,7 +11,14 @@ class PostResponse(BaseModel):
     content: str
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    @classmethod
+    def build(cls, post: Post):
+        return cls(
+            id=post.id,
+            image=post.image_static_path,
+            content=post.content,
+            created_at=post.created_at,
+        )
 
 
 class PostBriefResponse(BaseModel):
@@ -21,11 +27,7 @@ class PostBriefResponse(BaseModel):
 
     @classmethod
     def build(cls, post: Post):
-        filename: str = post.image.split("/")[-1]
-        return cls(
-            id=post.id,
-            image=f"http://127.0.0.1:8000/static/{filename}",
-        )
+        return cls(id=post.id, image=post.image_static_path)
 
 
 class PostListResponse(BaseModel):
@@ -36,3 +38,33 @@ class PostListResponse(BaseModel):
         return cls(
             posts=[PostBriefResponse.build(post=p) for p in posts]
         )
+
+
+class PostUserResponse(BaseModel):
+    id: int
+    username: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PostDetailResponse(BaseModel):
+    id: int
+    image: str
+    content: str
+    created_at: datetime
+    user: PostUserResponse
+    comments: "list[PostCommentResponse]"
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PostCommentResponse(BaseModel):
+    id: int
+    post_id: int
+    user_id: int
+    content: str
+    parent_id: int | None
+    replies: "list[PostCommentResponse]"
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

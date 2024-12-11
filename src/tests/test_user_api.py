@@ -14,7 +14,7 @@ def test_user_sign_up(client, test_session):
 
     # when
     response = client.post(
-        "/sync/users",
+        "/users",
         json={"username": "test_user", "password": "pw"}
     )
 
@@ -33,7 +33,7 @@ def test_user_login(client, test_session, test_user):
     # when
     encoded_bytes = base64.b64encode(b"test_user:pw")
     response = client.post(
-        "/sync/users/login",
+        "/users/login",
         headers={"Authorization": "Basic " + encoded_bytes.decode("utf-8")},
     )
 
@@ -46,7 +46,7 @@ def test_get_me(client, test_session, test_user, test_access_token):
 
     # when
     response = client.get(
-        "/sync/users/me",
+        "/users/me",
         headers={"Authorization": "Bearer " + test_access_token}
     )
 
@@ -62,7 +62,7 @@ def test_update_me(client, test_session, test_user, test_access_token):
 
     # when
     response = client.patch(
-        "/sync/users/me",
+        "/users/me",
         json={"new_password": "new_pw"},
         headers={"Authorization": "Bearer " + test_access_token}
     )
@@ -78,7 +78,7 @@ def test_delete_me(client, test_session, test_user, test_access_token):
 
     # when
     response = client.delete(
-        "/sync/users/me",
+        "/users/me",
         headers={"Authorization": "Bearer " + test_access_token}
     )
 

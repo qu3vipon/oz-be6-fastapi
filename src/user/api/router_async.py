@@ -48,7 +48,7 @@ async def login_handler(
             plain_text=credentials.password, hashed_password=user.password
         ):
             return JWTResponse(
-                access_token=encode_access_token(username=user.username),
+                access_token=encode_access_token(user_id=user.id),
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -63,7 +63,7 @@ async def login_handler(
 # 내 정보 조회
 @router.get("/me")
 async def get_me_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     session: AsyncSession = Depends(get_async_session),
 ):
     result = await session.execute(select(User).filter(User.username == username))
@@ -86,7 +86,7 @@ async def get_me_handler(
     status_code=status.HTTP_200_OK,
 )
 async def update_user_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     new_password: str = Body(..., embed=True),
     session: AsyncSession = Depends(get_async_session),
 ):
@@ -113,7 +113,7 @@ async def update_user_handler(
     response_model=None,
 )
 async def delete_user_handler(
-    username: str = Depends(authenticate),
+    user_id: int = Depends(authenticate),
     session: AsyncSession = Depends(get_async_session),
 ):
     result = await session.execute(select(User).filter(User.username == username))
