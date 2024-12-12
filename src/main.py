@@ -5,12 +5,13 @@ import requests
 import httpx
 
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, status, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from starlette.datastructures import State
 from starlette.staticfiles import StaticFiles
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from config.websocket import WebSocketConnectionManager, ws_connection_manager
 from feed import router as feed_router
 from user.api import router as user_router
 
@@ -94,3 +95,24 @@ async def async_handler():
     return {
         "duration": end_time - start_time,
     }
+
+@app.websocket(
+    "/ws/rooms/{room_id}/{user_id}"
+)
+async def websocket_handler(
+    room_id: int,
+    user_id: int,
+    websocket: WebSocket,  # 사용자의 웹소켓 연결(connection)
+    connection_manager: WebSocketConnectionManager = Depends(ws_connection_manager),
+):
+    await connection_manager.connect(
+        websocket=websocket, room_id=room_id, user_id=user_id
+    )
+
+    try:
+        while True:
+            content = await websocket.receive_text()
+            await connection_manager.broadcast(websocket=websocket, content=content)
+
+    except WebSocketDisconnect:
+        connection_manager.disconnect(websocket=websocket)  # 클라이언트 연결 목록에서 제거

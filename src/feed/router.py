@@ -4,11 +4,12 @@ import uuid
 
 from fastapi import APIRouter, status, Depends, UploadFile, File, Form, Body, HTTPException
 from sqlalchemy.exc import IntegrityError
+from starlette.responses import JSONResponse
 
-from feed.models import Post, PostComment
-from feed.repository import PostRepository, PostCommentRepository
+from feed.models import Post, PostComment, PostLike
+from feed.repository import PostRepository, PostCommentRepository, PostLikeRepository
 from feed.request import PostCommentCreateRequestBody
-from feed.response import PostResponse, PostListResponse, PostCommentResponse, PostDetailResponse
+from feed.response import PostResponse, PostListResponse, PostCommentResponse, PostDetailResponse, PostLikeResponse
 from user.service.authentication import authenticate
 
 router = APIRouter(tags=["Feed"])
@@ -194,6 +195,42 @@ def create_comment_handler(
     comment_repo.save(comment=new_comment)
     return PostCommentResponse.model_validate(obj=new_comment)
 
+# 8) Post 좋아요
+@router.post(
+    "/posts/{post_id}/like",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PostLikeResponse,
+)
+def like_post_handler(
+    post_id: int,
+    user_id: int = Depends(authenticate),
+    like_repo: PostLikeRepository = Depends(),
+):
+    like = PostLike.create(user_id=user_id, post_id=post_id)
+
+    try:
+        like_repo.save(like=like)
+    except IntegrityError:
+        like_repo.rollback()
+        like = like_repo.get_like_by_user(user_id=user_id, post_id=post_id)
+
+    return PostLikeResponse.model_validate(obj=like)
+
+
+# 9) Post 좋아요 취소
+@router.delete(
+    "/posts/{post_id}/like",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def cancel_post_like_handler(
+    post_id: int,
+    user_id: int = Depends(authenticate),
+    like_repo: PostLikeRepository = Depends(),
+):
+    like_repo.delete_like_by_user(user_id=user_id, post_id=post_id)
+
+
 # 7) Post 댓글 삭제
 @router.delete(
     "/comments/{comment_id}",
@@ -217,6 +254,3 @@ def delete_comment_handler(
         )
 
     comment_repo.delete(comment=comment)
-
-# 8) Post 좋아요
-# 9) Post 좋아요 취소

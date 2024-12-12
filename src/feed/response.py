@@ -53,7 +53,7 @@ class PostDetailResponse(BaseModel):
     content: str
     created_at: datetime
     user: PostUserResponse
-    comments: "list[PostCommentResponse]"
+    comments: "list[PostCommentResponse]"  # 부모 댓글
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -64,7 +64,15 @@ class PostCommentResponse(BaseModel):
     user_id: int
     content: str
     parent_id: int | None
-    replies: "list[PostCommentResponse]"
+    replies: "list[PostCommentResponse]"  # 대댓글
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class PostLikeResponse(BaseModel):
+    id: int
+    user_id: int
+    post_id: int
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
